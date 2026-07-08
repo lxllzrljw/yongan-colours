@@ -445,9 +445,11 @@ function playMarkerAudio(id){
   }
 
   try{
-    var bin=atob(m.audio);var arr=new Uint8Array(bin.length);
-    for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-    var blob=new Blob([arr],{type:'audio/webm'});
+    var b64 = m.audio.indexOf(',')>-1 ? m.audio.split(',')[1] : m.audio;
+    var mime = m.audio.indexOf(';')>-1 ? m.audio.split(';')[0].split(':')[1] : 'audio/webm';
+    var raw=atob(b64);var arr=new Uint8Array(raw.length);
+    for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+    var blob=new Blob([arr],{type:mime});
     var url=URL.createObjectURL(blob);
     var audio=new Audio(url);
     audio.onended=function(){
@@ -475,9 +477,11 @@ function openModal(id){
   markerText.value=m.text||'';blobAudio=null;
   if(m.audio){
     try{
-      var bin=atob(m.audio);var arr=new Uint8Array(bin.length);
-      for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-      blobAudio=new Blob([arr],{type:'audio/webm'});
+      var b64 = m.audio.indexOf(',')>-1 ? m.audio.split(',')[1] : m.audio;
+      var mime = m.audio.indexOf(';')>-1 ? m.audio.split(';')[0].split(':')[1] : 'audio/webm';
+      var raw=atob(b64);var arr=new Uint8Array(raw.length);
+      for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+      blobAudio=new Blob([arr],{type:mime});
       recStatus.textContent='✅ 有录音 ('+(blobAudio.size/1024).toFixed(1)+'KB)';
       recStatus.className='rec-status';
     }catch(e){recStatus.textContent='⚠️ 录音数据异常';recStatus.className='rec-status'}
@@ -497,7 +501,7 @@ function saveMarker(){
   if(blobAudio){
     var fr=new FileReader();
     fr.onload=function(e){
-      m.audio=e.target.result.split(',')[1];finish();
+      m.audio=e.target.result;finish();
     };
     fr.readAsDataURL(blobAudio);
   }else{finish()}
@@ -618,6 +622,8 @@ function showToast(msg){
 </script>
 </body>
 </html>
+
+
 
 
 
