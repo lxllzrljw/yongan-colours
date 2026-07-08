@@ -447,14 +447,7 @@ function playMarkerAudio(id){
 
   try{
     var src = m.audio.indexOf('data:')===0 ? m.audio : 'data:audio/webm;base64,'+m.audio;
-    var audio=new Audio(src);
-    audio.onended=function(){
-      for(var i=0;i<dots.length;i++)
-        if(dots[i].dataset.id===id)dots[i].classList.remove('playing');
-    };
-    audio.play().catch(function(){
-      showToast('⚠️ 播放失败');
-      URL.revokeObjectURL(url);
+    playAudioSrc(src, false, function(){
       for(var i=0;i<dots.length;i++)
         if(dots[i].dataset.id===id)dots[i].classList.remove('playing');
     });
@@ -547,17 +540,9 @@ function stopRecording(){
   else showToast('⏹️ 没有正在进行的录音');
 }
 function playRecording(){
-  if(currentAudioDataUrl){
-    var audio=new Audio(currentAudioDataUrl);
-    audio.play().catch(function(){showToast('⚠️ 播放失败')});
-  }else if(blobAudio){
-    var url=URL.createObjectURL(blobAudio);
-    var audio=new Audio(url);
-    audio.onended=function(){URL.revokeObjectURL(url)};
-    audio.play().catch(function(){showToast('⚠️ 播放失败');URL.revokeObjectURL(url)});
-  }else{
-    showToast('⚠️ 没有可播放的录音');
-  }
+  var src = currentAudioDataUrl || (blobAudio ? URL.createObjectURL(blobAudio) : null);
+  if(!src){showToast('⚠️ 没有可播放的录音');return}
+  playAudioSrc(src, !currentAudioDataUrl);
 }
 function clearCurrentAudio(){
   if(currentId){var m=markers.find(function(x){return x.id===currentId});if(m){m.audio=null;saveData()}}
@@ -614,6 +599,33 @@ function fallbackCopy(url){
   }
   document.body.removeChild(ta);
 }
+/* ===== Web Audio API 播放（跨浏览器兼容） ===== */
+var _audioCtx = null;
+function getAudioCtx(){
+  if(!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  return _audioCtx;
+}
+function playAudioSrc(src, revokeBlob, onEnd){
+  var ctx = getAudioCtx();
+  // Resume context if suspended (autoplay policy)
+  if(ctx.state==='suspended') ctx.resume();
+  fetch(src).then(function(resp){return resp.arrayBuffer()}).then(function(buf){
+    return ctx.decodeAudioData(buf);
+  }).then(function(buffer){
+    var source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.onended = function(){
+      if(onEnd) onEnd();
+      if(revokeBlob) URL.revokeObjectURL(src);
+    };
+    source.start(0);
+  }).catch(function(){
+    showToast('⚠️ 播放失败');
+    if(onEnd) onEnd();
+    if(revokeBlob) URL.revokeObjectURL(src);
+  });
+}
 /* ===== Toast ===== */
 function showToast(msg){
   toast.textContent=msg;toast.classList.add('show');
@@ -623,6 +635,7 @@ function showToast(msg){
 </script>
 </body>
 </html>
+
 
 
 
