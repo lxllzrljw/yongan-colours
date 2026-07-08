@@ -337,6 +337,7 @@ var currentId = null;
 var mediaRecorder = null;
 var audioChunks = [];
 var blobAudio = null;
+var currentAudioDataUrl = null;
 
 var canvasEl = document.getElementById('canvasArea');
 var markersEl = document.getElementById('markersContainer');
@@ -445,15 +446,9 @@ function playMarkerAudio(id){
   }
 
   try{
-    var b64 = m.audio.indexOf(',')>-1 ? m.audio.split(',')[1] : m.audio;
-    var mime = m.audio.indexOf(';')>-1 ? m.audio.split(';')[0].split(':')[1] : 'audio/webm';
-    var raw=atob(b64);var arr=new Uint8Array(raw.length);
-    for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
-    var blob=new Blob([arr],{type:mime});
-    var url=URL.createObjectURL(blob);
-    var audio=new Audio(url);
+    var src = m.audio.indexOf('data:')===0 ? m.audio : 'data:audio/webm;base64,'+m.audio;
+    var audio=new Audio(src);
     audio.onended=function(){
-      URL.revokeObjectURL(url);
       for(var i=0;i<dots.length;i++)
         if(dots[i].dataset.id===id)dots[i].classList.remove('playing');
     };
@@ -477,11 +472,10 @@ function openModal(id){
   markerText.value=m.text||'';blobAudio=null;
   if(m.audio){
     try{
-      var b64 = m.audio.indexOf(',')>-1 ? m.audio.split(',')[1] : m.audio;
-      var mime = m.audio.indexOf(';')>-1 ? m.audio.split(';')[0].split(':')[1] : 'audio/webm';
-      var raw=atob(b64);var arr=new Uint8Array(raw.length);
+      currentAudioDataUrl = m.audio.indexOf('data:')===0 ? m.audio : 'data:audio/webm;base64,'+m.audio;
+      var raw=atob(currentAudioDataUrl.split(',')[1]);var arr=new Uint8Array(raw.length);
       for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
-      blobAudio=new Blob([arr],{type:mime});
+      blobAudio=new Blob([arr],{type:'audio/webm'});
       recStatus.textContent='✅ 有录音 ('+(blobAudio.size/1024).toFixed(1)+'KB)';
       recStatus.className='rec-status';
     }catch(e){recStatus.textContent='⚠️ 录音数据异常';recStatus.className='rec-status'}
@@ -538,6 +532,7 @@ function startRecording(){
         showToast('⚠️ 录音出错');recStatus.textContent='录音出错';recStatus.className='rec-status';
       };
       mediaRecorder.start();
+      currentAudioDataUrl=null;
       recStatus.textContent='🔴 录音中…点击停止';
       recStatus.className='rec-status active';
     })
@@ -552,15 +547,21 @@ function stopRecording(){
   else showToast('⏹️ 没有正在进行的录音');
 }
 function playRecording(){
-  if(!blobAudio){showToast('⚠️ 没有可播放的录音');return}
-  var url=URL.createObjectURL(blobAudio);
-  var audio=new Audio(url);
-  audio.onended=function(){URL.revokeObjectURL(url)};
-  audio.play().catch(function(){showToast('⚠️ 播放失败');URL.revokeObjectURL(url)});
+  if(currentAudioDataUrl){
+    var audio=new Audio(currentAudioDataUrl);
+    audio.play().catch(function(){showToast('⚠️ 播放失败')});
+  }else if(blobAudio){
+    var url=URL.createObjectURL(blobAudio);
+    var audio=new Audio(url);
+    audio.onended=function(){URL.revokeObjectURL(url)};
+    audio.play().catch(function(){showToast('⚠️ 播放失败');URL.revokeObjectURL(url)});
+  }else{
+    showToast('⚠️ 没有可播放的录音');
+  }
 }
 function clearCurrentAudio(){
   if(currentId){var m=markers.find(function(x){return x.id===currentId});if(m){m.audio=null;saveData()}}
-  blobAudio=null;
+  blobAudio=null;currentAudioDataUrl=null;
   recStatus.textContent='未录音';recStatus.className='rec-status';
   showToast('🗑️ 录音已清除');
 }
@@ -622,6 +623,10 @@ function showToast(msg){
 </script>
 </body>
 </html>
+
+
+
+
 
 
 
