@@ -264,6 +264,16 @@ body::after{width:80px;height:80px;bottom:8%;right:5%;animation-delay:1s;backgro
   .marker-edit{width:18px;height:18px;font-size:10px;line-height:14px}
 }
 </style>
+<!-- DNS 预取加速 -->
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="dns-prefetch" href="https://api.github.com">
+<link rel="preconnect" href="https://api.github.com">
+<!-- DNS prefetch -->
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="dns-prefetch" href="https://api.github.com">
+<link rel="preconnect" href="https://api.github.com">
 </head>
 <body>
 <div class="b1"></div><div class="b2"></div><div class="b3"></div><div class="b4"></div><div class="b5"></div>
@@ -386,7 +396,7 @@ function loadData(){
       var overlay = document.getElementById('loadingOverlay');
       if(overlay) overlay.style.display = '';
       var sub = document.getElementById('loadingSub');
-      fetch('https://raw.githubusercontent.com/lxllzrljw/yongan-colours/main/share/' + shareKey + '.json')
+      fetch('https://cdn.jsdelivr.net/gh/lxllzrljw/yongan-colours@main/share/' + shareKey + '.json')
         .then(function(r){return r.text()})
         .then(function(txt){
           if(sub) sub.textContent = '✅ 数据已下载，正在渲染…';
@@ -649,10 +659,10 @@ function openShare(){
     var img = new Image();
     img.onload = function(){
       var c = document.createElement('canvas');
-      var maxW = 400; var s = Math.min(1, maxW / img.width);
+      var maxW = 300; var s = Math.min(1, maxW / img.width);
       c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      callback({markers:shareMarkers, bg:c.toDataURL('image/jpeg',0.5)});
+      callback({markers:shareMarkers, bg:c.toDataURL('image/jpeg',0.2)});
     };
     img.onerror = function(){callback({markers:shareMarkers, bg:bgImage})};
     img.src = bgImage;
