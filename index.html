@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -315,8 +315,8 @@ body::after{width:80px;height:80px;bottom:8%;right:5%;animation-delay:1s;backgro
     <button class="modal-close" onclick="closeShareModal()">✕ 关闭</button>
     <h3>📤 分享整个页面</h3>
     <p style="color:#666;margin-bottom:12px;font-size:0.95em;line-height:1.6;">
-      复制链接发给朋友，他们打开就能看到你的标记和背景图！
-      注意：录音数据较大无法通过链接分享，需重新录制。
+      分享链接发给朋友，他们打开就能看到你的完整作品！<br>
+      包括：背景图、颜色标记、文字和录音，全部自动保存到云端 📦
     </p>
     <div style="background:#F0F8FF;border:2px solid #B8E6C8;border-radius:16px;padding:16px;margin-bottom:14px;text-align:center;">
       <p style="font-size:0.92em;margin-bottom:4px;word-break:break-all;color:#2C3E50;" id="shareUrlDisplay">正在生成链接…</p>
@@ -600,43 +600,103 @@ function confirmClearCache(){
   placeholderEl.style.display='';renderAll();showToast('🧹 缓存已清除');
 }
 /* ===== 分享 - 导出完整页面文件 ===== */
-function openShare(){
-  if(markers.length===0 && !bgImage){showToast('📭 还没有内容，无法分享');return}
-  var displayEl = document.getElementById('shareUrlDisplay');
-  if(displayEl) displayEl.textContent = '正在上传数据到GitHub…';
-  var infoEl = document.getElementById('shareSizeInfo');
-  if(infoEl) infoEl.textContent = '⏳ 请稍候';
-  shareModal.classList.add('active');
-  var baseUrl = window.location.origin + window.location.pathname;
-  var fullData = { markers: markers, bg: bgImage };
-  var json = JSON.stringify(fullData);
-  var ts = Date.now();
-  var b64 = btoa(unescape(encodeURIComponent(json)));
-  var tk = Array.from('6768705f4b5254734249447275437875675251694775484854386a76537761497339307746305a56'.match(/../g)).map(function(h){return String.fromCharCode(parseInt(h,16))}).join('');
-  var ghBody = JSON.stringify({message:'share '+ts, content:b64, branch:'main'});
-  fetch('https://api.github.com/repos/lxllzrljw/yongan-colours/contents/share/'+ts+'.json', {
-    method:'PUT',
-    headers: {'Authorization':'token '+tk, 'Accept':'application/vnd.github.v3+json', 'Content-Type':'application/json'},
-    body: ghBody
-  }).then(function(r){return r.json()}).then(function(d){
-    if(d && d.content){
-      var shortUrl = baseUrl + '?s=' + ts;
-      if(displayEl) displayEl.textContent = shortUrl;
-      document.getElementById('shareBtn').dataset.url = shortUrl;
-      if(infoEl) infoEl.textContent = '✅ 短链接已生成！包含全部数据(录音+图片)';
-    } else {
-      var fb = baseUrl + '#d=' + encodeURI(json);
-      if(displayEl) displayEl.textContent = fb;
-      document.getElementById('shareBtn').dataset.url = fb;
-      if(infoEl) infoEl.textContent = '⚠️ 上传失败，使用长链接';
-    }
-  }).catch(function(){
-    var fb = baseUrl + '#d=' + encodeURI(json);
-    if(displayEl) displayEl.textContent = fb;
-    document.getElementById('shareBtn').dataset.url = fb;
-    if(infoEl) infoEl.textContent = '⚠️ 上传失败，使用长链接';
-  });
-}
+function openShare(){
+  if(markers.length===0 && !bgImage){showToast('📭 还没有内容，无法分享');return}
+  var displayEl = document.getElementById('shareUrlDisplay');
+  if(displayEl) displayEl.textContent = '正在生成分享链接…';
+  var infoEl = document.getElementById('shareSizeInfo');
+  if(infoEl) infoEl.textContent = '⏳ 处理中…';
+  shareModal.classList.add('active');
+
+  var shareMarkers = markers.map(function(m){
+    return {id:m.id, x:m.x, y:m.y, text:m.text||''};
+  });
+  var audioMarkers = markers.filter(function(m){return m.audio});
+
+  // 1) 压缩背景图
+  function stepCompressBg(callback){
+    if(!bgImage){callback({markers:shareMarkers, bg:null});return}
+    var img = new Image();
+    img.onload = function(){
+      var c = document.createElement('canvas');
+      var maxW = 800; var s = Math.min(1, maxW / img.width);
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      callback({markers:shareMarkers, bg:c.toDataURL('image/jpeg',0.5)});
+    };
+    img.onerror = function(){callback({markers:shareMarkers, bg:bgImage})};
+    img.src = bgImage;
+  }
+
+  // 2) 合并音频数据
+  function stepCollectAudio(data, callback){
+    if(audioMarkers.length === 0){callback(data);return}
+    audioMarkers.forEach(function(am){
+      var idx = data.markers.findIndex(function(sm){return sm.id === am.id});
+      if(idx !== -1) data.markers[idx].audio = am.audio;
+    });
+    callback(data);
+  }
+
+  // 3) 上传到 GitHub
+  function stepUpload(data, callback){
+    var jsonStr = JSON.stringify(data);
+    if(displayEl) displayEl.textContent = '⏳ 正在上传数据到GitHub…';
+    if(infoEl) infoEl.textContent = '数据大小: ' + (jsonStr.length/1024).toFixed(1) + 'KB';
+
+    var hexToken = '6768705f4b5254734249447275437875675251694775484854386a76537761497339307746305a56';
+    var token = '';
+    for(var i=0;i<hexToken.length;i+=2) token += String.fromCharCode(parseInt(hexToken.substr(i,2),16));
+
+    var owner = 'lxllzrljw';
+    var repo = 'yongan-colours';
+    var filename = 'share_' + Date.now();
+    var base64Content = btoa(unescape(encodeURIComponent(jsonStr)));
+
+    fetch('https://api.github.com/repos/' + owner + '/' + repo + '/contents/share/' + filename + '.json', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      body: JSON.stringify({
+        message: 'Share data ' + new Date().toISOString(),
+        content: base64Content,
+        branch: 'main'
+      })
+    })
+    .then(function(r){return r.json()})
+    .then(function(result){
+      if(result && result.content && result.content.name){
+        var shareUrl = 'https://lxllzrljw.github.io/yongan-colours/?s=' + filename;
+        if(displayEl) displayEl.textContent = '✅ ' + shareUrl;
+        document.getElementById('shareBtn').dataset.url = shareUrl;
+        if(infoEl) infoEl.textContent = '✅ 分享链接已生成！复制发送给朋友即可看到你的完整作品';
+        callback();
+      } else {
+        throw new Error(result.message || '上传失败');
+      }
+    })
+    .catch(function(err){
+      if(displayEl) displayEl.textContent = '⚠️ 上传失败(' + (err.message||'未知错误') + ')，改用链接内嵌方式';
+      var encoded = encodeURI(jsonStr);
+      var fallbackUrl = window.location.origin + window.location.pathname + '#d=' + encoded;
+      if(displayEl) displayEl.textContent = fallbackUrl;
+      document.getElementById('shareBtn').dataset.url = fallbackUrl;
+      if(infoEl) infoEl.textContent = '📦 内嵌链接 ' + (encoded.length/1024).toFixed(1) + 'KB';
+      callback();
+    });
+  }
+
+  // 串行执行
+  stepCompressBg(function(data){
+    stepCollectAudio(data, function(data2){
+      stepUpload(data2, function(){});
+    });
+  });
+}
+
 function closeShareModal(){shareModal.classList.remove('active')}
 
 function copyPageLink(){
