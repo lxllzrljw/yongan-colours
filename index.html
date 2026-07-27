@@ -396,6 +396,11 @@ function loadData(){
             bgImage = d.bg || null;
             localStorage.setItem('colourMap_v2',JSON.stringify({markers:markers,bg:bgImage}));
             history.replaceState(null,'',window.location.pathname);
+            if(bgImage){
+              canvasEl.style.backgroundImage='url('+bgImage+')';
+              canvasEl.classList.add('has-bg');
+              placeholderEl.style.display='none';
+            }
             renderAll();
             document.title = 'Yongans Colours & My Feelings';
           }
@@ -418,6 +423,12 @@ function loadData(){
           bgImage = d.bg || null;
           localStorage.setItem('colourMap_v2',JSON.stringify({markers:markers,bg:bgImage}));
           history.replaceState(null,'',window.location.pathname);
+          if(bgImage){
+            canvasEl.style.backgroundImage='url('+bgImage+')';
+            canvasEl.classList.add('has-bg');
+            placeholderEl.style.display='none';
+          }
+          renderAll();
           return;
         }
       }catch(e){console.log('Share data error',e)}
