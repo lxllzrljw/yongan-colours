@@ -315,15 +315,15 @@ body::after{width:80px;height:80px;bottom:8%;right:5%;animation-delay:1s;backgro
     <button class="modal-close" onclick="closeShareModal()">✕ 关闭</button>
     <h3>📤 分享整个页面</h3>
     <p style="color:#666;margin-bottom:12px;font-size:0.95em;line-height:1.6;">
-      点击下方按钮复制在线链接，分享给朋友即可查看你的色彩心情地图！🎉<br>
-      提示：数据保存在你的浏览器中，对方看到的是独立副本。
+      点击下方按钮复制链接，链接中已包含你的全部数据（标记、文字、录音、背景图）。<br>
+      对方打开链接就能直接看到你的完整作品！🎉
     </p>
     <div style="background:#F0F8FF;border:2px solid #B8E6C8;border-radius:16px;padding:16px;margin-bottom:14px;text-align:center;">
-      <p style="font-size:1em;margin-bottom:4px;word-break:break-all;color:#2C3E50;" id="shareUrlDisplay">正在获取链接…</p>
-      <p style="font-size:0.82em;color:#999;">🌐 在线链接（点击下方按钮复制）</p>
+      <p style="font-size:0.92em;margin-bottom:4px;word-break:break-all;color:#2C3E50;" id="shareUrlDisplay">正在生成链接…</p>
+      <p style="font-size:0.75em;color:#999;" id="shareSizeInfo"></p>
     </div>
     <div style="display:flex;gap:10px;">
-      <button class="btn-save-marker" onclick="copyPageLink()" style="flex:2;font-size:1em;">📋 复制在线链接</button>
+      <button class="btn-save-marker" id="shareBtn" onclick="copyPageLink()" style="flex:2;font-size:1em;">📋 复制含数据链接</button>
       <button class="btn-del-marker" onclick="closeShareModal()" style="flex:1;">关闭</button>
     </div>
   </div>
@@ -367,6 +367,21 @@ document.addEventListener('DOMContentLoaded',init);
 /* ===== localStorage ===== */
 function loadData(){
   try{
+    // 从 URL hash 恢复分享数据（优先于 localStorage）
+    var h = window.location.hash;
+    if(h && h.indexOf('#d=')===0){
+      try{
+        var dec = decodeURIComponent(h.substr(3));
+        var d = JSON.parse(dec);
+        if(d && d.markers){
+          markers = d.markers || [];
+          bgImage = d.bg || null;
+          localStorage.setItem('colourMap_v2',JSON.stringify({markers:markers,bg:bgImage}));
+          history.replaceState(null,'',window.location.pathname);
+          return;
+        }
+      }catch(e){console.log('Share data error',e)}
+    }
     var raw=localStorage.getItem('colourMap_v2');
     if(raw){var d=JSON.parse(raw);markers=d.markers||[];bgImage=d.bg||null}
   }catch(e){}
@@ -566,18 +581,27 @@ function confirmClearCache(){
 /* ===== 分享 - 导出完整页面文件 ===== */
 function openShare(){
   if(markers.length===0 && !bgImage){showToast('📭 还没有内容，无法分享');return}
+  var displayEl = document.getElementById('shareUrlDisplay');
+  if(displayEl) displayEl.textContent = '正在生成分享链接…';
   shareModal.classList.add('active');
+  var data = { markers: markers, bg: bgImage };
+  var json = JSON.stringify(data);
+  var encoded = encodeURIComponent(json);
+  var shareUrl = window.location.origin + window.location.pathname + '#d=' + encoded;
+  if(displayEl) displayEl.textContent = shareUrl;
+  document.getElementById('shareBtn').dataset.url = shareUrl;
+  var kb = (encoded.length / 1024).toFixed(1);
+  var infoEl = document.getElementById('shareSizeInfo');
+  if(infoEl) infoEl.textContent = '📦 数据大小: ' + kb + 'KB' + (kb>500 ? '（较大，分享可能较慢）' : '');
 }
 function closeShareModal(){shareModal.classList.remove('active')}
 
 function copyPageLink(){
   closeShareModal();
-  var url = window.location.href;
-  var displayEl = document.getElementById('shareUrlDisplay');
-  if(displayEl) displayEl.textContent = url;
+  var url = document.getElementById('shareBtn').dataset.url || window.location.href;
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(url).then(function(){
-      showToast('✅ 链接已复制到剪贴板！');
+      showToast('✅ 含数据的链接已复制！对方打开即可看到你的作品');
     }).catch(function(){
       fallbackCopy(url);
     });
@@ -593,7 +617,7 @@ function fallbackCopy(url){
   ta.select();
   try {
     document.execCommand('copy');
-    showToast('✅ 链接已复制到剪贴板！');
+    showToast('✅ 含数据的链接已复制！对方打开即可看到你的作品');
   } catch(e) {
     showToast('📋 请手动复制上方链接');
   }
@@ -635,6 +659,7 @@ function showToast(msg){
 </script>
 </body>
 </html>
+
 
 
 
