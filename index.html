@@ -399,22 +399,49 @@ function loadData(){
       fetch('https://cdn.jsdelivr.net/gh/lxllzrljw/yongan-colours@main/share/' + shareKey + '.json')
         .then(function(r){return r.text()})
         .then(function(txt){
-          if(sub) sub.textContent = '✅ 数据已下载，正在渲染…';
+          if(sub) sub.textContent = '✅ 数据已下载，正在加载图片…';
           var d = JSON.parse(txt);
           if(d && d.markers){
             markers = d.markers || [];
             bgImage = d.bg || null;
             localStorage.setItem('colourMap_v2',JSON.stringify({markers:markers,bg:bgImage}));
             history.replaceState(null,'',window.location.pathname);
-            if(bgImage){
-              canvasEl.style.backgroundImage='url('+bgImage+')';
-              canvasEl.classList.add('has-bg');
-              placeholderEl.style.display='none';
+            // If bg is a URL (from separate file), preload it before showing
+            if(bgImage && bgImage.indexOf('http')===0){
+              var preloadImg = new Image();
+              preloadImg.onload = function(){
+                canvasEl.style.backgroundImage='url('+bgImage+')';
+                canvasEl.classList.add('has-bg');
+                if(placeholderEl) placeholderEl.style.display='none';
+                renderAll();
+                document.title = 'Yongans Colours & My Feelings';
+                if(overlay) overlay.style.display = 'none';
+              };
+              preloadImg.onerror = function(){
+                canvasEl.style.backgroundImage='url('+bgImage+')';
+                canvasEl.classList.add('has-bg');
+                if(placeholderEl) placeholderEl.style.display='none';
+                renderAll();
+                document.title = 'Yongans Colours & My Feelings';
+                if(overlay) overlay.style.display = 'none';
+              };
+              preloadImg.src = bgImage;
+            } else {
+              // Embedded base64 data - show immediately
+              if(bgImage){
+                canvasEl.style.backgroundImage='url('+bgImage+')';
+                canvasEl.classList.add('has-bg');
+                if(placeholderEl) placeholderEl.style.display='none';
+              } else {
+                if(placeholderEl) placeholderEl.style.display='';
+              }
+              renderAll();
+              document.title = 'Yongans Colours & My Feelings';
+              if(overlay) overlay.style.display = 'none';
             }
-            renderAll();
-            document.title = 'Yongans Colours & My Feelings';
+          } else {
+            if(overlay) overlay.style.display = 'none';
           }
-          if(overlay) overlay.style.display = 'none';
         })
         .catch(function(e){
           if(overlay) overlay.style.display = 'none';
@@ -643,97 +670,98 @@ function confirmClearCache(){
 function openShare(){
   if(markers.length===0 && !bgImage){showToast('📭 还没有内容，无法分享');return}
   var displayEl = document.getElementById('shareUrlDisplay');
-  if(displayEl) displayEl.textContent = '正在生成分享链接…';
   var infoEl = document.getElementById('shareSizeInfo');
-  if(infoEl) infoEl.textContent = '⏳ 处理中…';
+  var btn = document.getElementById('shareBtn');
+
   shareModal.classList.add('active');
+  if(displayEl) displayEl.textContent = '⏳ 准备数据…';
+  if(infoEl) infoEl.textContent = '请稍候';
 
+  // Collect marker data
   var shareMarkers = markers.map(function(m){
-    return {id:m.id, x:m.x, y:m.y, text:m.text||''};
+    var obj = {id:m.id, x:m.x, y:m.y, text:m.text||''};
+    if(m.audio) obj.audio = m.audio;
+    return obj;
   });
-  var audioMarkers = markers.filter(function(m){return m.audio});
 
-  // 1) 压缩背景图
-  function stepCompressBg(callback){
-    if(!bgImage){callback({markers:shareMarkers, bg:null});return}
+  // Token
+  var hexToken = '6768705f4b5254734249447275437875675251694775484854386a76537761497339307746305a56';
+  var token = '';
+  for(var i=0;i<hexToken.length;i+=2) token += String.fromCharCode(parseInt(hexToken.substr(i,2),16));
+  var owner = 'lxllzrljw', repo = 'yongan-colours';
+  var ts = Date.now(), fn = 'share_' + ts;
+
+  // Upload helper
+  function up(filePath, content, cb){
+    fetch('https://api.github.com/repos/'+owner+'/'+repo+'/contents/'+filePath, {
+      method: 'PUT',
+      headers: {'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/vnd.github.v3+json'},
+      body: JSON.stringify({message:'Share '+ts, content:content, branch:'main'})
+    })
+    .then(function(r){return r.json()})
+    .then(function(r){
+      if(r && r.content && r.content.name) cb(null);
+      else cb(new Error(r.message||'上传失败'));
+    })
+    .catch(cb);
+  }
+
+  // Step 1: Compress + upload bg image (separate file)
+  function stepBg(cb){
+    if(!bgImage){cb({});return}
+    if(displayEl) displayEl.textContent = '⏳ 压缩图片…';
     var img = new Image();
     img.onload = function(){
-      var c = document.createElement('canvas');
-      var maxW = 300; var s = Math.min(1, maxW / img.width);
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      callback({markers:shareMarkers, bg:c.toDataURL('image/jpeg',0.2)});
+      var maxW = 1000, s = Math.min(1, maxW/img.width);
+      var can = document.createElement('canvas');
+      can.width = Math.round(img.width*s);
+      can.height = Math.round(img.height*s);
+      can.getContext('2d').drawImage(img,0,0,can.width,can.height);
+      var jpg = can.toDataURL('image/jpeg',0.7);
+      if(displayEl) displayEl.textContent = '⏳ 上传图片到GitHub…';
+      up('share/'+fn+'_bg.jpg', jpg.split(',')[1], function(err){
+        if(err){ cb({bgFail:true, bgData:jpg}); }
+        else { cb({bgUrl:'https://cdn.jsdelivr.net/gh/'+owner+'/'+repo+'@main/share/'+fn+'_bg.jpg'}); }
+      });
     };
-    img.onerror = function(){callback({markers:shareMarkers, bg:bgImage})};
+    img.onerror = function(){cb({bgFail:true, bgData:bgImage})};
     img.src = bgImage;
   }
 
-  // 2) 合并音频数据
-  function stepCollectAudio(data, callback){
-    if(audioMarkers.length === 0){callback(data);return}
-    audioMarkers.forEach(function(am){
-      var idx = data.markers.findIndex(function(sm){return sm.id === am.id});
-      if(idx !== -1) data.markers[idx].audio = am.audio;
-    });
-    callback(data);
-  }
+  // Step 2: Upload JSON with bg reference
+  function stepJson(bgRes, cb){
+    var data = {markers:shareMarkers};
+    if(bgRes.bgUrl) data.bg = bgRes.bgUrl;
+    else if(bgRes.bgData) data.bg = bgRes.bgData;
+    else data.bg = null;
 
-  // 3) 上传到 GitHub
-  function stepUpload(data, callback){
     var jsonStr = JSON.stringify(data);
-    if(displayEl) displayEl.textContent = '⏳ 正在上传数据到GitHub…';
-    if(infoEl) infoEl.textContent = '数据大小: ' + (jsonStr.length/1024).toFixed(1) + 'KB';
+    if(displayEl) displayEl.textContent = '⏳ 上传数据到GitHub…';
+    if(infoEl) infoEl.textContent = '数据大小: '+(jsonStr.length/1024).toFixed(1)+'KB';
 
-    var hexToken = '6768705f4b5254734249447275437875675251694775484854386a76537761497339307746305a56';
-    var token = '';
-    for(var i=0;i<hexToken.length;i+=2) token += String.fromCharCode(parseInt(hexToken.substr(i,2),16));
-
-    var owner = 'lxllzrljw';
-    var repo = 'yongan-colours';
-    var filename = 'share_' + Date.now();
-    var base64Content = btoa(unescape(encodeURIComponent(jsonStr)));
-
-    fetch('https://api.github.com/repos/' + owner + '/' + repo + '/contents/share/' + filename + '.json', {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github.v3+json'
-      },
-      body: JSON.stringify({
-        message: 'Share data ' + new Date().toISOString(),
-        content: base64Content,
-        branch: 'main'
-      })
-    })
-    .then(function(r){return r.json()})
-    .then(function(result){
-      if(result && result.content && result.content.name){
-        var shareUrl = 'https://lxllzrljw.github.io/yongan-colours/?s=' + filename;
-        if(displayEl) displayEl.textContent = '✅ ' + shareUrl;
-        document.getElementById('shareBtn').dataset.url = shareUrl;
-        if(infoEl) infoEl.textContent = '✅ 分享链接已生成！复制发送给朋友即可看到你的完整作品';
-        callback();
+    var b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+    up('share/'+fn+'.json', b64, function(err){
+      if(err){
+        if(displayEl) displayEl.textContent = '⚠️ 上传失败('+(err.message||'')+')，改用链接内嵌';
+        var enc = encodeURI(jsonStr);
+        var fallbackUrl = window.location.origin+window.location.pathname+'#d='+enc;
+        if(displayEl) displayEl.textContent = fallbackUrl;
+        btn.dataset.url = fallbackUrl;
+        if(infoEl) infoEl.textContent = '📦 内嵌链接 '+(enc.length/1024).toFixed(1)+'KB';
       } else {
-        throw new Error(result.message || '上传失败');
+        var shareUrl = 'https://lxllzrljw.github.io/yongan-colours/?s='+fn;
+        if(displayEl) displayEl.textContent = '✅ '+shareUrl;
+        btn.dataset.url = shareUrl;
+        if(infoEl) infoEl.textContent = '✅ 链接已生成！包含高清背景图+句子+录音';
       }
-    })
-    .catch(function(err){
-      if(displayEl) displayEl.textContent = '⚠️ 上传失败(' + (err.message||'未知错误') + ')，改用链接内嵌方式';
-      var encoded = encodeURI(jsonStr);
-      var fallbackUrl = window.location.origin + window.location.pathname + '#d=' + encoded;
-      if(displayEl) displayEl.textContent = fallbackUrl;
-      document.getElementById('shareBtn').dataset.url = fallbackUrl;
-      if(infoEl) infoEl.textContent = '📦 内嵌链接 ' + (encoded.length/1024).toFixed(1) + 'KB';
-      callback();
+      cb();
     });
   }
 
-  // 串行执行
-  stepCompressBg(function(data){
-    stepCollectAudio(data, function(data2){
-      stepUpload(data2, function(){});
-    });
+  // Run
+  if(displayEl) displayEl.textContent = '⏳ 压缩图片…';
+  stepBg(function(bgRes){
+    stepJson(bgRes, function(){});
   });
 }
 
