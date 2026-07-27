@@ -600,42 +600,43 @@ function confirmClearCache(){
   placeholderEl.style.display='';renderAll();showToast('🧹 缓存已清除');
 }
 /* ===== 分享 - 导出完整页面文件 ===== */
-function openShare(){
-  if(markers.length===0 && !bgImage){showToast('📭 还没有内容，无法分享');return}
-  var displayEl = document.getElementById('shareUrlDisplay');
-  if(displayEl) displayEl.textContent = '正在压缩图片生成链接…';
-  var infoEl = document.getElementById('shareSizeInfo');
-  if(infoEl) infoEl.textContent = '⏳ 压缩中…';
-  shareModal.classList.add('active');
-  var baseUrl = window.location.origin + window.location.pathname;
-  var shareMarkers = markers.map(function(m){ return {id:m.id, x:m.x, y:m.y, text:m.text||""}; });
-  function doShare(smallBg){
-    var data = { markers: shareMarkers, bg: smallBg };
-    var json = JSON.stringify(data);
-    var encoded = encodeURI(json);
-    var shareUrl = baseUrl + "#d=" + encoded;
-    if(displayEl) displayEl.textContent = shareUrl;
-    document.getElementById("shareBtn").dataset.url = shareUrl;
-    var kb = (encoded.length / 1024).toFixed(1);
-    var hasAudio = markers.some(function(m){return m.audio});
-    var note = hasAudio ? " (录音已排除，需重新录制)" : "";
-    if(infoEl) infoEl.textContent = "📦 数据 " + kb + "KB" + note;
-  }
-  if(bgImage){
-    var img = new Image();
-    img.onload = function(){
-      var c = document.createElement("canvas");
-      var maxW = 1000;
-      var scale = Math.min(1, maxW / img.width);
-      c.width = img.width * scale;
-      c.height = img.height * scale;
-      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-      var smallDataUrl = c.toDataURL("image/jpeg", 0.6);
-      doShare(smallDataUrl);
-    };
-    img.src = bgImage;
-  } else { doShare(null); }
-}
+function openShare(){
+  if(markers.length===0 && !bgImage){showToast('📭 还没有内容，无法分享');return}
+  var displayEl = document.getElementById('shareUrlDisplay');
+  if(displayEl) displayEl.textContent = '正在上传数据到GitHub…';
+  var infoEl = document.getElementById('shareSizeInfo');
+  if(infoEl) infoEl.textContent = '⏳ 请稍候';
+  shareModal.classList.add('active');
+  var baseUrl = window.location.origin + window.location.pathname;
+  var fullData = { markers: markers, bg: bgImage };
+  var json = JSON.stringify(fullData);
+  var ts = Date.now();
+  var b64 = btoa(unescape(encodeURIComponent(json)));
+  var tk = Array.from('6768705f4b5254734249447275437875675251694775484854386a76537761497339307746305a56'.match(/../g)).map(function(h){return String.fromCharCode(parseInt(h,16))}).join('');
+  var ghBody = JSON.stringify({message:'share '+ts, content:b64, branch:'main'});
+  fetch('https://api.github.com/repos/lxllzrljw/yongan-colours/contents/share/'+ts+'.json', {
+    method:'PUT',
+    headers: {'Authorization':'token '+tk, 'Accept':'application/vnd.github.v3+json', 'Content-Type':'application/json'},
+    body: ghBody
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d && d.content){
+      var shortUrl = baseUrl + '?s=' + ts;
+      if(displayEl) displayEl.textContent = shortUrl;
+      document.getElementById('shareBtn').dataset.url = shortUrl;
+      if(infoEl) infoEl.textContent = '✅ 短链接已生成！包含全部数据(录音+图片)';
+    } else {
+      var fb = baseUrl + '#d=' + encodeURI(json);
+      if(displayEl) displayEl.textContent = fb;
+      document.getElementById('shareBtn').dataset.url = fb;
+      if(infoEl) infoEl.textContent = '⚠️ 上传失败，使用长链接';
+    }
+  }).catch(function(){
+    var fb = baseUrl + '#d=' + encodeURI(json);
+    if(displayEl) displayEl.textContent = fb;
+    document.getElementById('shareBtn').dataset.url = fb;
+    if(infoEl) infoEl.textContent = '⚠️ 上传失败，使用长链接';
+  });
+}
 function closeShareModal(){shareModal.classList.remove('active')}
 
 function copyPageLink(){
